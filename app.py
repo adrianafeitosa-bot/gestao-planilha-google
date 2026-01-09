@@ -3,111 +3,84 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
 # Configuração da página
-st.set_page_config(page_title="Portal de Indicadores", layout="wide")
+st.set_page_config(page_title="Painel de Indicadores", layout="wide")
 
-# 1. CONEXÃO COM O GOOGLE SHEETS
+# 1. ESTABELECER CONEXÃO
+# Certifique-se de que o e-mail da conta de serviço tem acesso à planilha no Google Sheets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# URL da aba LOGIN (usando o link com GID para evitar erros de descoberta de aba)
-URL_ABA_LOGIN = "https://docs.google.com/spreadsheets/d/17nviSL3em2Z4NrkQIINDUsKjthPNiYTVNH5UwSfC8Pk/edit#gid=1610446452"
-
-# 2. FUNÇÃO PARA CARREGAR USUÁRIOS
-@st.cache_data(ttl=60)
-def carregar_usuarios():
-    # Lê a aba de logins usando o link direto
-    return conn.read(spreadsheet=URL_ABA_LOGIN)
-
-try:
-    df_usuarios = carregar_usuarios()
-except Exception as e:
-    st.error(f"Erro ao conectar com a base de usuários: {e}")
-    st.stop()
-
-# 3. GERENCIAMENTO DE ESTADO DA SESSÃO (LOGIN)
+# 2. GERENCIAR ESTADO DE LOGIN
 if "logado" not in st.session_state:
     st.session_state.logado = False
-    st.session_state.user_email = ""
-    st.session_state.user_role = ""
     st.session_state.user_name = ""
+    st.session_state.user_role = ""
+    st.session_state.user_email = ""
+
+# 3. FUNÇÃO PARA CARREGAR DADOS COM TRATAMENTO DE ERRO
+def carregar_aba(nome_aba):
+    try:
+        # Forçamos ttl=0 durante testes para evitar erros de cache/404 antigos
+        return conn.read(worksheet=nome_aba, ttl=0)
+    except Exception as e:
+        st.error(f"Erro ao acessar a aba '{nome_aba}': {e}")
+        return None
 
 # --- TELA DE LOGIN ---
 if not st.session_state.logado:
-    st.markdown("## 🔐 Acesso ao Sistema")
+    st.title("🔐 Login do Sistema")
     
-    with st.container():
-        col1, col2 = st.columns([1, 2])
-        with col1:
-            with st.form("form_login"):
-                email_input = st.text_input("E-mail (Login)")
-                # A senha na sua planilha é numérica, tratamos como string para comparar
-                senha_input = st.text_input("Senha", type="password")
-                botao_entrar = st.form_submit_button("Entrar")
+    # Carregar base de usuários da aba LOGIN
+    df_usuarios = carregar_aba("LOGIN")
+    
+    if df_usuarios is not None:
+        with st.form("login_form"):
+            login_input = st.text_input("Login (E-mail)")
+            senha_input = st.text_input("Senha", type="password")
+            entrar = st.form_submit_button("Entrar")
+            
+            if entrar:
+                # Filtrar usuário na base (tratando senha como texto)
+                usuario = df_usuarios[
+                    (df_usuarios['LOGIN'] == login_input) & 
+                    (df_usuarios['SENHA'].astype(str) == str(senha_input))
+                ]
+                
+                if not usuario.empty:
+                    st.session_state.logado = True
+                    st.session_state.user_name = usuario.iloc[0]['NOME']
+                    st.session_state.user_role = usuario.iloc[0]['ACESSO']
+                    st.session_state.user_email = login_input
+                    st.rerun()
+                else:
+                    st.error("Usuário ou senha incorretos.")
 
-                if botao_entrar:
-                    # Verifica se o usuário e senha coincidem
-                    usuario_valido = df_usuarios[
-                        (df_usuarios['LOGIN'] == email_input) & 
-                        (df_usuarios['SENHA'].astype(str) == str(senha_input))
-                    ]
-                    
-                    if not usuario_valido.empty:
-                        st.session_state.logado = True
-                        st.session_state.user_email = email_input
-                        st.session_state.user_role = usuario_valido.iloc[0]['ACESSO']
-                        st.session_state.user_name = usuario_valido.iloc[0]['NOME']
-                        st.success("Login realizado com sucesso!")
-                        st.rerun()
-                    else:
-                        st.error("E-mail ou senha incorretos.")
-
-# --- TELA DO DASHBOARD (APÓS LOGIN) ---
+# --- DASHBOARD (APÓS LOGIN) ---
 else:
-    # Sidebar de Navegação e Logout
-    with st.sidebar:
-        st.write(f"👤 **{st.session_state.user_name}**")
-        st.info(f"Nível de Acesso: {st.session_state.user_role}")
-        
-        if st.button("Sair do Sistema"):
-            st.session_state.logado = False
-            st.rerun()
+    st.sidebar.success(f"Bem-vindo, {st.session_state.user_name}!")
+    st.sidebar.write(f"Perfil: **{st.session_state.user_role}**")
+    
+    if st.sidebar.button("Sair"):
+        st.session_state.logado = False
+        st.rerun()
 
-    st.title(f"📊 Painel de Indicadores")
+    st.title("📊 Indicadores de Desempenho")
 
-    # 4. CARREGAMENTO E FILTRAGEM DOS DADOS
-    # Substitua "Dashboard_Geral" pelo nome exato da aba que contém os dados/metas
-    try:
-        # Carrega os dados da aba de indicadores
-        df_dados = conn.read(worksheet="Dashboard_Geral", ttl=10)
+    # Carregar aba de indicadores (ex: Dashboard_Geral)
+    df_dados = carregar_aba("Dashboard_Geral")
 
+    if df_dados is not None:
         if st.session_state.user_role == "Administrador":
-            st.subheader("Visualização Administrativa (Todos os Dados)")
+            st.subheader("Painel Administrativo - Visão Geral")
             st.dataframe(df_dados, use_container_width=True)
-            
-            # Exemplo de formulário para adicionar novos dados (apenas para Admin)
-            with st.expander("➕ Adicionar Novo Registro"):
-                with st.form("novo_registro"):
-                    novo_nome = st.text_input("Nome do Vendedor")
-                    novo_login = st.text_input("E-mail/Login")
-                    enviar = st.form_submit_button("Salvar na Planilha")
-                    
-                    if enviar:
-                        novo_dado = pd.DataFrame([{"NOME": novo_nome, "LOGIN": novo_login}])
-                        dados_atualizados = pd.concat([df_dados, novo_dado], ignore_index=True)
-                        conn.update(worksheet="Dashboard_Geral", data=dados_atualizados)
-                        st.success("Dados atualizados!")
-
         else:
-            # FILTRO PARA VENDEDOR: Mostra apenas linhas onde a coluna LOGIN é igual ao e-mail logado
-            st.subheader(f"Meus Resultados")
-            
-            # Garanta que a aba de dados possua uma coluna chamada 'LOGIN'
-            df_filtrado = df_dados[df_dados['LOGIN'] == st.session_state.user_email]
-            
-            if df_filtrado.empty:
-                st.warning("Nenhum dado encontrado para o seu usuário nesta aba.")
+            st.subheader(f"Meus Resultados - {st.session_state.user_name}")
+            # Filtrar os dados para mostrar apenas os do usuário logado
+            # Assume que a aba de dados tem uma coluna 'LOGIN' para identificação
+            if 'LOGIN' in df_dados.columns:
+                dados_vendedor = df_dados[df_dados['LOGIN'] == st.session_state.user_email]
+                if not dados_vendedor.empty:
+                    st.dataframe(dados_vendedor, use_container_width=True)
+                else:
+                    st.info("Nenhum dado encontrado para o seu usuário.")
             else:
-                st.dataframe(df_filtrado, use_container_width=True)
-
-    except Exception as e:
-        st.error(f"Erro ao carregar a aba de dados: {e}")
-        st.info("Dica: Verifique se a aba 'Dashboard_Geral' existe na sua planilha.")
+                st.warning("Coluna 'LOGIN' não encontrada na aba de indicadores.")
