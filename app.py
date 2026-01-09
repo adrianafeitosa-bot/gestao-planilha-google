@@ -8,6 +8,7 @@ st.set_page_config(page_title="Dashboard Restrito", layout="wide")
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # Carrega a aba de logins (ajuste o nome da worksheet se necessário)
+# Tente ajustar esta linha no seu código:
 df_usuarios = conn.read(worksheet="LOGIN", ttl=60)
 
 # --- SISTEMA DE LOGIN ---
