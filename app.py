@@ -9,6 +9,7 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 # Carrega a aba de logins (ajuste o nome da worksheet se necessário)
 # Tente ajustar esta linha no seu código:
+https://docs.google.com/spreadsheets/d/17nviSL3em2Z4NrkQIINDUskjtHPNiYTVNH5UwSfC8Pk/edit?gid=1610446452#gid=1610446452
 df_usuarios = conn.read(worksheet="LOGIN", ttl=60)
 
 # --- SISTEMA DE LOGIN ---
