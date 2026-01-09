@@ -2,37 +2,71 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
-st.title("Painel de Controle - Google Sheets")
+st.set_page_config(page_title="Dashboard Restrito", layout="wide")
 
-# 1. Estabelecer a conexão
+# --- CONEXÃO E CARREGAMENTO DE USUÁRIOS ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 2. Ler os dados da planilha
-# O ttl=5 garante que os dados atualizem a cada 5 segundos
-data = conn.read(worksheet="Página1", ttl=5)
+# Carrega a aba de logins (ajuste o nome da worksheet se necessário)
+df_usuarios = conn.read(worksheet="LOGIN", ttl=60)
 
-st.write("### Visualização da Planilha")
-st.dataframe(data)
+# --- SISTEMA DE LOGIN ---
+if "logado" not in st.session_state:
+    st.session_state.logado = False
+    st.session_state.user_email = ""
+    st.session_state.user_role = ""
+    st.session_state.user_name = ""
 
-# 3. Formulário para adicionar novos dados
-with st.sidebar:
-    st.header("Adicionar Novo Registro")
-    with st.form("meu_formulario"):
-        # Adapte estes campos para as colunas da sua planilha real!
-        # Exemplo: Se sua planilha tem colunas 'Nome' e 'Email'
-        coluna1 = st.text_input("Nome") 
-        coluna2 = st.text_input("Email")
+def realizar_login():
+    email_input = st.text_input("E-mail (Login)")
+    senha_input = st.text_input("Senha", type="password")
+    
+    if st.button("Entrar"):
+        # Verifica se existe a combinação e-mail e senha (convertendo senha para string)
+        usuario_validado = df_usuarios[
+            (df_usuarios['LOGIN'] == email_input) & 
+            (df_usuarios['SENHA'].astype(str) == str(senha_input))
+        ]
         
-        enviado = st.form_submit_button("Enviar para Planilha")
+        if not usuario_validado.empty:
+            st.session_state.logado = True
+            st.session_state.user_email = email_input
+            st.session_state.user_role = usuario_validado.iloc[0]['ACESSO']
+            st.session_state.user_name = usuario_validado.iloc[0]['NOME']
+            st.rerun()
+        else:
+            st.error("Usuário ou senha incorretos.")
 
-        if enviado:
-            # Cria uma nova linha com os dados
-            novo_dado = pd.DataFrame([{"Nome": coluna1, "Email": coluna2}])
-            
-            # Junta com os dados antigos
-            dados_atualizados = pd.concat([data, novo_dado], ignore_index=True)
-            
-            # Atualiza a planilha no Google
-            conn.update(worksheet="Página1", data=dados_atualizados)
-            
-            st.success("Dados salvos com sucesso!")
+# --- TELA PRINCIPAL ---
+if not st.session_state.logado:
+    st.header("Por favor, faça o login")
+    realizar_login()
+else:
+    # Sidebar com informações do usuário
+    with st.sidebar:
+        st.write(f"👤 **Usuário:** {st.session_state.user_name}")
+        st.write(f"🔑 **Acesso:** {st.session_state.user_role}")
+        if st.button("Sair"):
+            st.session_state.logado = False
+            st.rerun()
+
+    st.title(f"Bem-vindo, {st.session_state.user_name}!")
+
+    # --- LÓGICA DE FILTRAGEM ---
+    # Vamos ler a aba de dados (ex: Dashboard_Geral ou META)
+    # Importante: a aba de dados deve ter uma coluna de 'E-mail' ou 'Vendedor' para filtrar
+    df_dados = conn.read(worksheet="Dashboard_Geral", ttl=5)
+
+    if st.session_state.user_role == "Administrador":
+        st.subheader("Visualização Completa (Admin)")
+        st.dataframe(df_dados)
+    else:
+        st.subheader("Meus Indicadores")
+        # FILTRO: Aqui você deve filtrar pela coluna que identifica o vendedor.
+        # Ajuste o nome da coluna 'LOGIN' ou 'Email' conforme estiver na sua aba de dados
+        dados_filtrados = df_dados[df_dados['LOGIN'] == st.session_state.user_email]
+        
+        if dados_filtrados.empty:
+            st.warning("Não foram encontrados dados para o seu usuário.")
+        else:
+            st.dataframe(dados_filtrados)
