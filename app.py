@@ -5,7 +5,7 @@ import pandas as pd
 # 1. Configuração da página
 st.set_page_config(page_title="Gestão Interna - Brisanet", layout="wide")
 
-# 2. Estabelecer conexão
+# 2. Estabelecer conexão com Google Sheets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # 3. Inicialização do estado de login
@@ -16,11 +16,10 @@ if "logado" not in st.session_state:
 # 4. Função para carregar dados com tratamento de erro
 def carregar_dados(aba):
     try:
-        # ttl=0 para garantir dados atualizados de pausas e metas
+        # ttl=0 garante dados em tempo real
         return conn.read(worksheet=aba, ttl=0)
     except Exception as e:
-        # Se você ver esta mensagem, verifique se compartilhou a planilha com o e-mail da conta de serviço
-        st.error(f"Erro ao acessar a aba '{aba}': Verifique as permissões de 'Editor' na planilha.")
+        st.error(f"Erro ao acessar a aba '{aba}': Verifique se o nome está correto na planilha.")
         return None
 
 # --- LÓGICA DE INTERFACE ---
@@ -28,7 +27,7 @@ def carregar_dados(aba):
 if not st.session_state.logado:
     st.title("🔐 Login do Sistema")
     
-    # Carrega base de usuários
+    # Tenta carregar a base de usuários da aba LOGIN
     df_usuarios = carregar_dados("LOGIN")
     
     if df_usuarios is not None:
@@ -38,7 +37,7 @@ if not st.session_state.logado:
             botao_acessar = st.form_submit_button("Acessar Painel")
             
             if botao_acessar:
-                # Validação: converte senha para string para evitar erro com números
+                # Validação convertendo senha para string
                 usuario_valido = df_usuarios[
                     (df_usuarios['LOGIN'] == email_input) & 
                     (df_usuarios['SENHA'].astype(str) == str(senha_input))
@@ -46,7 +45,7 @@ if not st.session_state.logado:
                 
                 if not usuario_valido.empty:
                     st.session_state.logado = True
-                    st.session_state.user_data = usuario_validado.iloc[0].to_dict()
+                    st.session_state.user_data = usuario_valido.iloc[0].to_dict()
                     st.rerun()
                 else:
                     st.error("E-mail ou senha incorretos.")
@@ -65,7 +64,7 @@ else:
             
     st.title("📊 Painel de Indicadores")
 
-    # Carrega dados principais
+    # Carrega dados principais da aba Dashboard_Geral
     df_geral = carregar_dados("Dashboard_Geral")
 
     if df_geral is not None:
@@ -82,10 +81,10 @@ else:
                 if not meus_dados.empty:
                     st.dataframe(meus_dados, use_container_width=True)
                 else:
-                    st.info("Nenhum dado encontrado para o seu login.")
+                    st.info("Nenhum dado encontrado para o seu login nesta aba.")
             else:
                 st.warning("Coluna 'LOGIN' não encontrada na aba Dashboard_Geral.")
 
-    # Alerta fixo sobre normas da P.A.
+    # Alerta fixo sobre as regras
     st.divider()
     st.warning("⚠️ **Atenção:** Evitem o uso de celular na P.A. e cumpram rigorosamente os horários de pausa para evitar medidas administrativas.")
