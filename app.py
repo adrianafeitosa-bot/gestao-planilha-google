@@ -5,25 +5,29 @@ import pandas as pd
 # Configuração da página
 st.set_page_config(page_title="Gestão Interna", layout="wide")
 
-# Conexão
+# Conexão com a planilha configurada nas 'Secrets' do Streamlit
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- ESTADO DE LOGIN ---
+# --- INICIALIZAÇÃO DO ESTADO DE LOGIN ---
 if "logado" not in st.session_state:
     st.session_state.logado = False
     st.session_state.user_data = None
 
+# --- FUNÇÃO PARA CARREGAR DADOS COM SEGURANÇA ---
 def carregar_dados(aba):
     try:
-        # ttl=0 garante que os dados de pausas/metas sejam lidos em tempo real
+        # Busca a aba pelo nome exato configurado na planilha
+        # ttl=0 evita erros de cache durante os testes
         return conn.read(worksheet=aba, ttl=0)
     except Exception as e:
-        st.error(f"Erro ao acessar a aba '{aba}': Verifique as permissões.")
+        st.error(f"Erro ao acessar a aba '{aba}': Verifique se o e-mail da conta de serviço foi adicionado como 'Editor' na planilha.")
         return None
 
 # --- LÓGICA DE INTERFACE ---
 if not st.session_state.logado:
     st.title("🔐 Login do Sistema")
+    
+    # Tenta carregar a aba de logins
     df_usuarios = carregar_dados("LOGIN")
     
     if df_usuarios is not None:
@@ -33,7 +37,7 @@ if not st.session_state.logado:
             entrar = st.form_submit_button("Acessar")
             
             if entrar:
-                # Validação robusta de tipos
+                # Validação (trata a senha como texto para evitar erros com números)
                 filtro = df_usuarios[
                     (df_usuarios['LOGIN'] == email) & 
                     (df_usuarios['SENHA'].astype(str) == str(senha))
@@ -44,41 +48,31 @@ if not st.session_state.logado:
                     st.session_state.user_data = filtro.iloc[0].to_dict()
                     st.rerun()
                 else:
-                    st.error("Credenciais inválidas.")
+                    st.error("Credenciais inválidas. Tente novamente.")
 else:
-    # --- ÁREA LOGADA ---
+    # --- ÁREA LOGADA (Apenas após login bem-sucedido) ---
     u = st.session_state.user_data
-    
-    # Navegação Lateral
-    st.sidebar.title(f"Olá, {u['NOME']}")
+    st.sidebar.title(f"Bem-vindo, {u['NOME']}")
     st.sidebar.write(f"Perfil: **{u['ACESSO']}**")
-    
-    # Seletor de Abas da Planilha
-    pagina = st.sidebar.radio("Selecione o Indicador:", ["Geral", "META", "CSAT", "IR"])
     
     if st.sidebar.button("Sair"):
         st.session_state.logado = False
         st.rerun()
 
-    st.title(f"📊 Indicadores - {pagina}")
+    st.title("📊 Painel de Indicadores")
 
-    # Mapeamento de abas
-    aba_destino = "Dashboard_Geral" if pagina == "Geral" else pagina
-    df_dados = carregar_dados(aba_destino)
+    # Carrega os dados da aba de indicadores (ex: Dashboard_Geral)
+    df_geral = carregar_dados("Dashboard_Geral")
 
-    if df_dados is not None:
-        # Lógica de Visualização por Perfil
+    if df_geral is not None:
         if u['ACESSO'] == "Administrador":
-            st.subheader(f"Visão Completa: {pagina}")
-            # Filtro de busca para o Admin
-            busca = st.text_input("Pesquisar por nome ou e-mail:")
-            if busca:
-                df_dados = df_dados[df_dados.astype(str).apply(lambda x: busca.lower() in x.str.lower().values, axis=1)]
-            st.dataframe(df_dados, use_container_width=True)
+            st.subheader("Visão Geral do Administrador")
+            st.dataframe(df_geral, use_container_width=True)
         else:
-            st.subheader(f"Meus Resultados: {pagina}")
-            if 'LOGIN' in df_dados.columns:
-                dados_filtrados = df_dados[df_dados['LOGIN'] == u['LOGIN']]
+            st.subheader(f"Meus Resultados")
+            # Filtra apenas os dados do usuário logado
+            if 'LOGIN' in df_geral.columns:
+                dados_filtrados = df_geral[df_geral['LOGIN'] == u['LOGIN']]
                 st.dataframe(dados_filtrados, use_container_width=True)
             else:
-                st.warning(f"A aba {pagina} não possui coluna 'LOGIN' para filtrar seu acesso.")
+                st.warning("Coluna 'LOGIN' não encontrada na aba de dados para filtrar resultados.")
