@@ -27,8 +27,8 @@ def carregar_dados(aba):
 if not st.session_state.logado:
     st.title("🔐 Login do Sistema")
     
-    # Tenta carregar a base de usuários da aba LOGIN
-    df_usuarios = carregar_dados("LOGIN")
+    # --- ALTERAÇÃO REALIZADA AQUI: NOME DA ABA MUDOU PARA 'USUARIO-LOGIN' ---
+    df_usuarios = carregar_dados("USUARIO-LOGIN")
     
     if df_usuarios is not None:
         with st.form("painel_login"):
@@ -37,7 +37,7 @@ if not st.session_state.logado:
             botao_acessar = st.form_submit_button("Acessar Painel")
             
             if botao_acessar:
-                # Validação convertendo senha para string
+                # Validação convertendo senha para string para evitar erro com números
                 usuario_valido = df_usuarios[
                     (df_usuarios['LOGIN'] == email_input) & 
                     (df_usuarios['SENHA'].astype(str) == str(senha_input))
@@ -68,12 +68,12 @@ else:
     df_geral = carregar_dados("Dashboard_Geral")
 
     if df_geral is not None:
-        # Lógica para Administrador
+        # Lógica para Administrador: visualiza tudo
         if u['ACESSO'] == "Administrador":
             st.subheader("Visão Geral (Administrador)")
             st.dataframe(df_geral, use_container_width=True)
         
-        # Lógica para Vendedor (Operador)
+        # Lógica para Vendedor (Operador): visualiza apenas seus dados
         else:
             st.subheader(f"Meus Resultados - {u['NOME']}")
             if 'LOGIN' in df_geral.columns:
