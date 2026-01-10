@@ -2,36 +2,33 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
-# Configuração da página para layout expandido
-st.set_page_config(page_title="Painel de Controle - Brisanet", layout="wide")
+# 1. Configuração da página
+st.set_page_config(page_title="Gestão Interna - Brisanet", layout="wide")
 
-# 1. ESTABELECER CONEXÃO
-# A conexão utiliza as credenciais configuradas no Streamlit Secrets
+# 2. Estabelecer conexão
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 2. INICIALIZAÇÃO DO ESTADO DE SESSÃO
-# Mantém o usuário logado enquanto a aba do navegador estiver aberta
+# 3. Inicialização do estado de login
 if "logado" not in st.session_state:
     st.session_state.logado = False
     st.session_state.user_data = None
 
-# 3. FUNÇÃO PARA CARREGAR DADOS COM SEGURANÇA
-def carregar_dados(nome_aba):
+# 4. Função para carregar dados com tratamento de erro
+def carregar_dados(aba):
     try:
-        # worksheet deve ser o nome exato da aba na sua planilha
-        # ttl=0 garante que os dados de pausas/indicadores sejam lidos em tempo real
-        return conn.read(worksheet=nome_aba, ttl=0)
+        # ttl=0 para garantir dados atualizados de pausas e metas
+        return conn.read(worksheet=aba, ttl=0)
     except Exception as e:
-        st.error(f"Erro ao acessar a aba '{nome_aba}': Verifique se o e-mail da Conta de Serviço é Editor da planilha.")
+        # Se você ver esta mensagem, verifique se compartilhou a planilha com o e-mail da conta de serviço
+        st.error(f"Erro ao acessar a aba '{aba}': Verifique as permissões de 'Editor' na planilha.")
         return None
 
-# --- FLUXO DE INTERFACE ---
+# --- LÓGICA DE INTERFACE ---
 
 if not st.session_state.logado:
-    # --- TELA DE LOGIN ---
     st.title("🔐 Login do Sistema")
     
-    # Carrega a base de usuários da aba LOGIN
+    # Carrega base de usuários
     df_usuarios = carregar_dados("LOGIN")
     
     if df_usuarios is not None:
@@ -41,38 +38,54 @@ if not st.session_state.logado:
             botao_acessar = st.form_submit_button("Acessar Painel")
             
             if botao_acessar:
-                # Validação de Login: Compara e-mail e converte senha para string para evitar erros
-                usuario_validado = df_usuarios[
+                # Validação: converte senha para string para evitar erro com números
+                usuario_valido = df_usuarios[
                     (df_usuarios['LOGIN'] == email_input) & 
                     (df_usuarios['SENHA'].astype(str) == str(senha_input))
                 ]
                 
-                if not usuario_validado.empty:
-                    # Armazena os dados do usuário na sessão
+                if not usuario_valido.empty:
                     st.session_state.logado = True
                     st.session_state.user_data = usuario_validado.iloc[0].to_dict()
-                    st.success(f"Bem-vindo(a), {st.session_state.user_data['NOME']}!")
                     st.rerun()
                 else:
-                    st.error("Credenciais incorretas. Verifique seu e-mail e senha.")
+                    st.error("E-mail ou senha incorretos.")
 
 else:
-    # --- ÁREA LOGADA (DASHBOARD) ---
+    # --- ÁREA LOGADA ---
     u = st.session_state.user_data
     
-    # Barra lateral com informações e botão de logout
+    # Barra lateral
     with st.sidebar:
         st.subheader(f"👤 {u['NOME']}")
         st.write(f"Perfil: **{u['ACESSO']}**")
-        if st.button("Sair do Sistema"):
+        if st.button("Sair"):
             st.session_state.logado = False
             st.rerun()
             
     st.title("📊 Painel de Indicadores")
 
-    # 4. CARREGAMENTO E FILTRAGEM DOS DADOS GERAIS
-    # Substitua "Dashboard_Geral" pelo nome da aba onde ficam as metas/indicadores
+    # Carrega dados principais
     df_geral = carregar_dados("Dashboard_Geral")
 
     if df_geral is not None:
-        if u['
+        # Lógica para Administrador
+        if u['ACESSO'] == "Administrador":
+            st.subheader("Visão Geral (Administrador)")
+            st.dataframe(df_geral, use_container_width=True)
+        
+        # Lógica para Vendedor (Operador)
+        else:
+            st.subheader(f"Meus Resultados - {u['NOME']}")
+            if 'LOGIN' in df_geral.columns:
+                meus_dados = df_geral[df_geral['LOGIN'] == u['LOGIN']]
+                if not meus_dados.empty:
+                    st.dataframe(meus_dados, use_container_width=True)
+                else:
+                    st.info("Nenhum dado encontrado para o seu login.")
+            else:
+                st.warning("Coluna 'LOGIN' não encontrada na aba Dashboard_Geral.")
+
+    # Alerta fixo sobre normas da P.A.
+    st.divider()
+    st.warning("⚠️ **Atenção:** Evitem o uso de celular na P.A. e cumpram rigorosamente os horários de pausa para evitar medidas administrativas.")
