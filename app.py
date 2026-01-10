@@ -2,77 +2,77 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
-# Configuração da página
-st.set_page_config(page_title="Gestão Interna", layout="wide")
+# Configuração da página para layout expandido
+st.set_page_config(page_title="Painel de Controle - Brisanet", layout="wide")
 
-# Conexão com a planilha configurada nas 'Secrets' do Streamlit
+# 1. ESTABELECER CONEXÃO
+# A conexão utiliza as credenciais configuradas no Streamlit Secrets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- INICIALIZAÇÃO DO ESTADO DE LOGIN ---
+# 2. INICIALIZAÇÃO DO ESTADO DE SESSÃO
+# Mantém o usuário logado enquanto a aba do navegador estiver aberta
 if "logado" not in st.session_state:
     st.session_state.logado = False
     st.session_state.user_data = None
 
-# --- FUNÇÃO PARA CARREGAR DADOS COM SEGURANÇA ---
-def carregar_dados(aba):
+# 3. FUNÇÃO PARA CARREGAR DADOS COM SEGURANÇA
+def carregar_dados(nome_aba):
     try:
-        # Busca a aba pelo nome exato configurado na planilha
-        # ttl=0 evita erros de cache durante os testes
-        return conn.read(worksheet=aba, ttl=0)
+        # worksheet deve ser o nome exato da aba na sua planilha
+        # ttl=0 garante que os dados de pausas/indicadores sejam lidos em tempo real
+        return conn.read(worksheet=nome_aba, ttl=0)
     except Exception as e:
-        st.error(f"Erro ao acessar a aba '{aba}': Verifique se o e-mail da conta de serviço foi adicionado como 'Editor' na planilha.")
+        st.error(f"Erro ao acessar a aba '{nome_aba}': Verifique se o e-mail da Conta de Serviço é Editor da planilha.")
         return None
 
-# --- LÓGICA DE INTERFACE ---
+# --- FLUXO DE INTERFACE ---
+
 if not st.session_state.logado:
+    # --- TELA DE LOGIN ---
     st.title("🔐 Login do Sistema")
     
-    # Tenta carregar a aba de logins
+    # Carrega a base de usuários da aba LOGIN
     df_usuarios = carregar_dados("LOGIN")
     
     if df_usuarios is not None:
         with st.form("painel_login"):
-            email = st.text_input("Login (E-mail)")
-            senha = st.text_input("Senha", type="password")
-            entrar = st.form_submit_button("Acessar")
+            email_input = st.text_input("E-mail de Login")
+            senha_input = st.text_input("Senha", type="password")
+            botao_acessar = st.form_submit_button("Acessar Painel")
             
-            if entrar:
-                # Validação (trata a senha como texto para evitar erros com números)
-                filtro = df_usuarios[
-                    (df_usuarios['LOGIN'] == email) & 
-                    (df_usuarios['SENHA'].astype(str) == str(senha))
+            if botao_acessar:
+                # Validação de Login: Compara e-mail e converte senha para string para evitar erros
+                usuario_validado = df_usuarios[
+                    (df_usuarios['LOGIN'] == email_input) & 
+                    (df_usuarios['SENHA'].astype(str) == str(senha_input))
                 ]
                 
-                if not filtro.empty:
+                if not usuario_validado.empty:
+                    # Armazena os dados do usuário na sessão
                     st.session_state.logado = True
-                    st.session_state.user_data = filtro.iloc[0].to_dict()
+                    st.session_state.user_data = usuario_validado.iloc[0].to_dict()
+                    st.success(f"Bem-vindo(a), {st.session_state.user_data['NOME']}!")
                     st.rerun()
                 else:
-                    st.error("Credenciais inválidas. Tente novamente.")
-else:
-    # --- ÁREA LOGADA (Apenas após login bem-sucedido) ---
-    u = st.session_state.user_data
-    st.sidebar.title(f"Bem-vindo, {u['NOME']}")
-    st.sidebar.write(f"Perfil: **{u['ACESSO']}**")
-    
-    if st.sidebar.button("Sair"):
-        st.session_state.logado = False
-        st.rerun()
+                    st.error("Credenciais incorretas. Verifique seu e-mail e senha.")
 
+else:
+    # --- ÁREA LOGADA (DASHBOARD) ---
+    u = st.session_state.user_data
+    
+    # Barra lateral com informações e botão de logout
+    with st.sidebar:
+        st.subheader(f"👤 {u['NOME']}")
+        st.write(f"Perfil: **{u['ACESSO']}**")
+        if st.button("Sair do Sistema"):
+            st.session_state.logado = False
+            st.rerun()
+            
     st.title("📊 Painel de Indicadores")
 
-    # Carrega os dados da aba de indicadores (ex: Dashboard_Geral)
+    # 4. CARREGAMENTO E FILTRAGEM DOS DADOS GERAIS
+    # Substitua "Dashboard_Geral" pelo nome da aba onde ficam as metas/indicadores
     df_geral = carregar_dados("Dashboard_Geral")
 
     if df_geral is not None:
-        if u['ACESSO'] == "Administrador":
-            st.subheader("Visão Geral do Administrador")
-            st.dataframe(df_geral, use_container_width=True)
-        else:
-            st.subheader(f"Meus Resultados")
-            # Filtra apenas os dados do usuário logado
-            if 'LOGIN' in df_geral.columns:
-                dados_filtrados = df_geral[df_geral['LOGIN'] == u['LOGIN']]
-                st.dataframe(dados_filtrados, use_container_width=True)
-            else:
-                st.warning("Coluna 'LOGIN' não encontrada na aba de dados para filtrar resultados.")
+        if u['
