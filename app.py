@@ -13,13 +13,13 @@ if "logado" not in st.session_state:
     st.session_state.logado = False
     st.session_state.user_data = None
 
-# 4. Função para carregar dados com tratamento de erro e limpeza de cache
+# 4. Função para carregar dados com tratamento de erro
 def carregar_dados(aba):
     try:
-        # ttl=0 força a leitura do Google Sheets sem usar lixo de cache anterior
+        # ttl=0 garante dados em tempo real para evitar erros de cache
         return conn.read(worksheet=aba, ttl=0)
     except Exception as e:
-        # Exibe o erro real caso a aba não seja encontrada ou falte permissão
+        # Exibe o erro real para diagnóstico
         st.error(f"Erro ao acessar a aba '{aba}': {e}")
         return None
 
@@ -28,7 +28,7 @@ def carregar_dados(aba):
 if not st.session_state.logado:
     st.title("🔐 Login do Sistema")
     
-    # Carrega a base de usuários da aba correta
+    # Busca a aba renomeada 'USUARIO-SITE'
     df_usuarios = carregar_dados("USUARIO-SITE")
     
     if df_usuarios is not None:
@@ -38,7 +38,7 @@ if not st.session_state.logado:
             botao_acessar = st.form_submit_button("Acessar Painel")
             
             if botao_acessar:
-                # Validação convertendo senha para string para evitar erros de tipo
+                # Validação convertendo senha para string
                 usuario_valido = df_usuarios[
                     (df_usuarios['LOGIN'] == email_input) & 
                     (df_usuarios['SENHA'].astype(str) == str(senha_input))
@@ -46,21 +46,21 @@ if not st.session_state.logado:
                 
                 if not usuario_valido.empty:
                     st.session_state.logado = True
-                    # Converte a linha do usuário em dicionário para facilitar o acesso
                     st.session_state.user_data = usuario_valido.iloc[0].to_dict()
                     st.rerun()
                 else:
                     st.error("E-mail ou senha incorretos.")
 
 else:
-    # --- ÁREA LOGADA (Apenas após o login bem-sucedido) ---
+    # --- ÁREA LOGADA ---
     u = st.session_state.user_data
     
-    # Barra lateral de navegação
+    # Barra lateral
     with st.sidebar:
+        # CORREÇÃO DA LINHA 78: Garantir que as aspas e chaves estejam fechadas
         st.subheader(f"👤 {u['NOME']}")
         st.write(f"Perfil: **{u['ACESSO']}**")
-        if st.button("Sair do Sistema"):
+        if st.button("Sair"):
             st.session_state.logado = False
             st.rerun()
             
@@ -70,22 +70,13 @@ else:
     df_geral = carregar_dados("Dashboard_Geral")
 
     if df_geral is not None:
-        # Se for Administrador, vê a planilha inteira
         if u['ACESSO'] == "Administrador":
-            st.subheader("Visão Geral da Operação (Administrador)")
+            st.subheader("Visão Geral (Administrador)")
             st.dataframe(df_geral, use_container_width=True)
-        
-        # Se for Vendedor, vê apenas suas próprias linhas filtradas pelo LOGIN
         else:
             st.subheader(f"Meus Resultados - {u['NOME']}")
             if 'LOGIN' in df_geral.columns:
                 meus_dados = df_geral[df_geral['LOGIN'] == u['LOGIN']]
-                if not meus_dados.empty:
-                    st.dataframe(meus_dados, use_container_width=True)
-                else:
-                    st.info("Nenhum dado encontrado para o seu login nesta aba.")
+                st.dataframe(meus_dados, use_container_width=True)
             else:
                 st.warning("Coluna 'LOGIN' não encontrada na aba Dashboard_Geral.")
-
-    st.divider()
-    st.warning("⚠️ **Aviso:** O uso de celular na P.A. é restrito e atrasos nas pausas podem gerar medidas administrativas.")
